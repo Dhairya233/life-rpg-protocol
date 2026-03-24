@@ -194,8 +194,9 @@ export default function PartyPage() {
       .eq('user_id', user.id)
       .single();
 
-    if (memberRow) {
-      setMyParty({ ...(memberRow.party as Party), role: memberRow.role as MyParty['role'] });
+    if (memberRow && memberRow.party) {
+      const pData = Array.isArray(memberRow.party) ? memberRow.party[0] : memberRow.party;
+      setMyParty({ ...(pData as unknown as Party), role: memberRow.role as MyParty['role'] });
     } else {
       setMyParty(null);
     }
