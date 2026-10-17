@@ -1,0 +1,239 @@
+/* app/globals.css */
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;500;600;700;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   CSS CUSTOM PROPERTIES — Themes
+   ============================================================ */
+
+/* ── PREMIUM NEO-GLASSMORPHIC DARK ──────────────────────────── */
+:root,
+[data-theme="classic"] {
+  --bg-primary:       #09090b;
+  --bg-secondary:     #18181b;
+  --bg-card:          rgba(24, 24, 27, 0.8);
+  --bg-card-hover:    rgba(39, 39, 42, 0.9);
+  --bg-overlay:       rgba(9, 9, 11, 0.9);
+
+  --border:           #27272a;
+  --border-accent:    #3f3f46;
+
+  --text-primary:     #e2e8f0;
+  --text-secondary:   #a1a1aa;
+  --text-muted:       #71717a;
+
+  --accent:           #00F0FF;
+  --accent-glow:      rgba(0, 240, 255, 0.6);
+  --accent-soft:      rgba(0, 240, 255, 0.15);
+
+  --xp-fill:          linear-gradient(90deg, #00F0FF, #FF00FF);
+  --xp-track:         rgba(255,255,255,0.05);
+  --xp-shimmer:       rgba(255,255,255,0.15);
+
+  --toggle-bg:        rgba(0, 240, 255, 0.1);
+  --toggle-border:    rgba(0, 240, 255, 0.3);
+  --toggle-text:      #00F0FF;
+
+  --font-display:     'Inter', sans-serif;
+  --font-body:        'Inter', sans-serif;
+
+  --scanline-opacity: 0.025;
+  --glow-intensity:   1;
+}
+
+/* ── CLEAN MODERN (High-contrast / Light) ───────────────── */
+[data-theme="modern"] {
+  --bg-primary:       #f5f5f7;
+  --bg-secondary:     #ffffff;
+  --bg-card:          #ffffff;
+  --bg-card-hover:    #f0f0f2;
+  --bg-overlay:       rgba(245, 245, 247, 0.92);
+
+  --border:           rgba(0, 0, 0, 0.08);
+  --border-accent:    rgba(0, 0, 0, 0.18);
+
+  --text-primary:     #111111;
+  --text-secondary:   rgba(17, 17, 17, 0.6);
+  --text-muted:       rgba(17, 17, 17, 0.35);
+
+  --accent:           #0071e3;
+  --accent-glow:      #0071e3;
+  --accent-soft:      rgba(0, 113, 227, 0.08);
+
+  --xp-fill:          linear-gradient(90deg, #0071e3, #5856d6);
+  --xp-track:         rgba(0,0,0,0.08);
+  --xp-shimmer:       rgba(255,255,255,0.6);
+
+  --toggle-bg:        rgba(0, 113, 227, 0.08);
+  --toggle-border:    rgba(0, 113, 227, 0.25);
+  --toggle-text:      #0071e3;
+
+  --font-display:     'Inter', sans-serif;
+  --font-body:        'Inter', sans-serif;
+
+  --scanline-opacity: 0;
+  --glow-intensity:   0;
+}
+
+/* ============================================================
+   BASE STYLES
+   ============================================================ */
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  transition: background-color 0.4s ease, color 0.4s ease;
+}
+
+/* ============================================================
+   COMPONENT TOKENS (resolved by theme)
+   ============================================================ */
+
+/* Mobile-first Tropic Card Utilities */
+.tropic-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 2px 0 rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+.tropic-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), inset 0 2px 0 rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.dashboard-bg {
+  min-height: 100vh;
+  position: relative;
+  background-color: var(--bg-primary);
+}
+
+/* Scanline overlay — only visible in classic mode */
+.dashboard-bg::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, var(--scanline-opacity)) 2px,
+    rgba(0, 0, 0, var(--scanline-opacity)) 4px
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+.character-sheet {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border);
+  transition: background-color 0.4s ease, border-color 0.4s ease;
+}
+
+[data-theme="classic"] .character-sheet {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 24px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), inset 0 2px 0 rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="modern"] .character-sheet {
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.07), 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.branch-card {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border);
+  transition: background-color 0.4s ease, border-color 0.4s ease;
+}
+
+[data-theme="classic"] .branch-card {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 20px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), inset 0 2px 0 rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="modern"] .branch-card {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+}
+
+.branch-desc  { color: var(--text-secondary); }
+.section-label { color: var(--text-secondary); font-family: var(--font-body); }
+.stat-label   { color: var(--text-secondary); font-family: var(--font-body); }
+
+.stat-chip {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border);
+  transition: background-color 0.4s ease;
+}
+
+/* XP Bar tokens */
+.xp-label { color: var(--text-secondary); font-family: var(--font-body); }
+.xp-value { color: var(--accent); font-family: var(--font-display); }
+
+[data-theme="classic"] .xp-value {
+  text-shadow: 0 0 12px var(--accent-glow);
+}
+
+.xp-track  { background: var(--xp-track); }
+.xp-fill   { background: var(--xp-fill); }
+
+[data-theme="classic"] .xp-fill {
+  box-shadow: 0 0 15px rgba(0, 240, 255, 0.5), 0 0 30px rgba(255, 0, 255, 0.3);
+}
+
+.xp-shimmer {
+  background: linear-gradient(90deg, transparent, var(--xp-shimmer), transparent);
+}
+
+/* Theme toggle */
+.theme-toggle-btn {
+  background: var(--toggle-bg);
+  border: 1px solid var(--toggle-border);
+  color: var(--toggle-text);
+  transition: all 0.3s ease;
+}
+
+.theme-toggle-btn:hover {
+  background: var(--accent-soft);
+}
+
+/* Typography */
+.display-font { font-family: var(--font-display); }
+
+[data-theme="classic"] .display-font {
+  letter-spacing: 0.08em;
+}
+
+/* Divider */
+.rpg-divider {
+  border: none;
+  height: 1px;
+  background: var(--border);
+}
+
+/* Scrollbar — classic only */
+[data-theme="classic"] ::-webkit-scrollbar       { width: 4px; }
+[data-theme="classic"] ::-webkit-scrollbar-track  { background: var(--bg-primary); }
+[data-theme="classic"] ::-webkit-scrollbar-thumb  { background: var(--accent); border-radius: 2px; }
+
+/* Subtle grid background — classic only */
+[data-theme="classic"] .dashboard-grid-bg {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
