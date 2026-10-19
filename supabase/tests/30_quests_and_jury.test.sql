@@ -182,4 +182,24 @@ SELECT tests.admin();
 SELECT tests.ok('role was NOT changed by the admin tool', (SELECT role FROM public.profiles WHERE id = :'alice') = 'user');
 SELECT tests.ok('manual Aura change is in the log', EXISTS (SELECT 1 FROM public.aura_log WHERE user_id = :'alice' AND reason LIKE 'admin_adjustment by %'));
 
+\echo '== jury bonus is capped per day (anti-farming)'
+\set bobproof '22222222-2222-2222-2222-222222222222/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb.png'
+SELECT tests.admin();
+INSERT INTO storage.objects (bucket_id, name) VALUES ('submissions', :'bobproof');
+DELETE FROM public.user_quests;
+UPDATE public.profiles SET aura = 100, xp = 0 WHERE id IN (:'j1', :'j2', :'j3', :'bob');
+INSERT INTO public.aura_log (user_id, delta, reason)
+  SELECT :'j1', 2, 'jury_bonus' FROM generate_series(1, 10);
+SELECT tests.login(:'bob');
+CREATE TEMP TABLE uq6 AS SELECT public.start_quest(:'quest') AS id;
+GRANT SELECT ON uq6 TO PUBLIC;
+SELECT public.submit_quest_proof((SELECT id FROM uq6), :'bobproof');
+SELECT tests.login(:'j1'); SELECT public.cast_jury_vote((SELECT id FROM uq6), false);
+SELECT tests.login(:'j2'); SELECT public.cast_jury_vote((SELECT id FROM uq6), false);
+SELECT tests.login(:'j3'); SELECT public.cast_jury_vote((SELECT id FROM uq6), false);
+SELECT tests.admin();
+SELECT tests.ok('rejection resolved', (SELECT status FROM public.user_quests WHERE id = (SELECT id FROM uq6)) = 'failed');
+SELECT tests.ok('juror under the cap still gets the bonus', (SELECT xp FROM public.profiles WHERE id = :'j2') = 10);
+SELECT tests.ok('juror over the daily cap gets NO bonus',   (SELECT xp FROM public.profiles WHERE id = :'j1') = 0);
+
 ROLLBACK;

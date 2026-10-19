@@ -21,6 +21,11 @@ export async function requireUser() {
   if (error || !user) {
     return { error: json({ error: 'Unauthorized' }, 401) };
   }
+  // Banned players are refused everywhere, not only inside database functions.
+  const { data: profile } = await supabase.from('profiles').select('is_banned').eq('id', user.id).single();
+  if (profile?.is_banned) {
+    return { error: json({ error: 'Forbidden' }, 403) };
+  }
   return { user, supabase };
 }
 

@@ -51,6 +51,19 @@ final schema → 0.
 
 "review" = verified by reading the code, not by an automated test.
 
+## Found by the independent review (migration 026 and follow-ups)
+
+- **Fixed:** jurors could be paid +10 XP/+2 Aura for every reject→retry→reject cycle with friendly accounts.
+  Jury bonus is now capped at 10 per juror per day (tested). Collusion still *exists* (see below) but no longer pays without limit.
+- **Fixed:** legacy `proof_url` values that are not a clean `uid/uuid.ext` path are cleared (so they can never be signed).
+- **Fixed:** banned players are now also refused by server routes (`requireUser`), e.g. the AI plan endpoint.
+- **Left as is (low risk, documented):** the critical-hit chance can reach 100% (base luck 50 + boost cap 50);
+  admin XP/Aura edits set absolute values (an admin can overwrite a player's very recent gain); a banned user's
+  already-pending submission can still pay out; a proof file can be deleted and re-uploaded under the same name
+  while pending; users cannot be deleted because `aura_log` is append-only; leaders cannot leave a party;
+  leaderboard/jury queue have no LIMIT; legacy rows with out-of-range rewards could block resolution
+  (check your live data for `xp_reward > 3333` or `aura_reward > 500`).
+
 ## Honest limits (things this does NOT protect against)
 
 - **The focus jail is client-side.** The server never sees a tab switch, so a determined user can bypass

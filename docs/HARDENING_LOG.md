@@ -40,3 +40,8 @@ after `get_proof_path_for_viewer` decides who may view. (b) Stops public photo a
 ## Phase 6 – Repo cleanup
 (a) Removed junk (`mnt/`, `supabase/.temp`, build info); `.gitignore`; README; `.env.example`; docs moved to `docs/`;
 package metadata; CI workflow; lint config. (c) lint, tsc, tests and build all pass (CI runs them). (d) `git revert`.
+
+## Phase 7 – Independent review
+(a) A separate reviewer read the SQL, routes and client code and tried to find holes. Result: none for a single user;
+farming loop, legacy `proof_url`, and banned-route gaps fixed (migration 026, `lib/server/auth.ts`); the rest documented in SECURITY.md.
+(c) `bash scripts/test-db.sh` (now includes the bonus-cap test). (d) Restore backup / `git revert`.

@@ -20,6 +20,8 @@ The task had no one to ask, so these choices were made on your behalf. Each can 
 | Simulated discovery and sample plans are labelled as such | Honesty over looking impressive. |
 | No licence file added | Choosing MIT/other is the owner's call; README says so. |
 
+| Jury bonus capped at 10/day per juror (migration 026) | Closes a farming loop found in review; does not change the base reward. |
+
 ## Changes a user can see
 
 - Jury queue updates every few seconds instead of instantly.
