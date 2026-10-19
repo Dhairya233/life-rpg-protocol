@@ -1,3 +1,7 @@
+> **Archived original README.** Kept for history; the project README is `../README.md`.
+> Several statements below were wrong and are corrected inline or flagged: there is no offline/service-worker
+> support, the focus monitor is a soft deterrent, and no licence has been chosen.
+
 # ⚔ Life-RPG Protocol
 
 > **Transform your focus sessions into legendary quests. Earn Aura. Level up for real.**
@@ -5,7 +9,6 @@
 ![Version](https://img.shields.io/badge/version-1.2-4af7ff?style=flat-square)
 ![Stack](https://img.shields.io/badge/stack-Next.js%2014%20%7C%20Supabase%20%7C%20Tailwind-9b59ff?style=flat-square)
 ![Status](https://img.shields.io/badge/status-Active%20Development-39ff6b?style=flat-square)
-![License](https://img.shields.io/badge/license-MIT-white?style=flat-square)
 
 ---
 
@@ -198,9 +201,9 @@ Every stat you earn is backed by real effort. No fake grinding. The community ho
 | Styling | Tailwind CSS | Utility-first, zero runtime |
 | Animation | Framer Motion | Spring physics for AuraRing + XPBar |
 | State | React Context API | ThemeContext — no overkill libraries |
-| PWA | next-pwa | Service worker, offline support |
+| PWA | manifest only | Installable; **no service worker, no offline support** |
 | Deployment | Vercel | Edge CDN, preview URLs |
-| Monitoring | Sentry | Error tracking + performance |
+| Monitoring | — | Sentry was planned but is not set up |
 
 ---
 
@@ -314,7 +317,7 @@ All three layers feed into a shared violation state. A **10-second grace period*
 
 ### ⚖ The Jury (Weighted Voting)
 
-After a quest is completed, users upload photo proof. The system selects a randomised jury pool (minimum Aura: 100) who review the submission and vote `Approve` or `Reject`.
+After a quest is completed, users upload photo proof. Any player with at least 100 Aura can review it (there is no randomised pool: the queue is open to all eligible jurors) and vote `Approve` or `Reject`.
 
 **Verdict formula:**
 ```
@@ -363,7 +366,7 @@ profiles       — Core user stats (aura, xp, level, luck, streak)
 quests         — Available tasks with difficulty + rewards
 user_quests    — Per-user quest attempts with status tracking
 jury_votes     — Individual jury votes with Aura snapshots
-aura_log       — Immutable audit trail of every Aura change
+aura_log       — Append-only log of Aura changes made by the game (tamper-resistant, not tamper-proof)
 ```
 
 ### Quest Status Machine
@@ -379,11 +382,12 @@ Full schema with SQL: see [SYSTEM_DESIGN.md](./SYSTEM_DESIGN.md) — Section 4.
 
 ## 🔒 Security
 
-- **Row Level Security (RLS)** on all tables — users can only read/write their own data
-- **Service role key** never exposed to client bundles
-- **httpOnly cookies** for JWT storage — not accessible via JavaScript
-- **Signed URLs** for proof images — 1-hour TTL, server-generated only
-- **Jury anti-collusion** — randomised pool, minimum Aura threshold, self-voting blocked
+See [SECURITY.md](./SECURITY.md) for the verified, current list. Summary:
+- Deny-by-default database grants + Row Level Security; browsers cannot write game tables at all
+- Every game action is a database function that takes the user from `auth.uid()`
+- Service role key only in server code (`import 'server-only'`)
+- Proof images: private bucket, **5-minute** signed links created by the server
+- Jury: server-enforced eligibility (>= 100 Aura), no self-votes, one vote each, weight read from the database. Pools are not randomised: any eligible juror can vote
 
 ---
 
@@ -437,11 +441,11 @@ Set these environment variables in your Vercel dashboard:
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `NEXT_PUBLIC_APP_URL` (your production URL)
+- `OPENAI_API_KEY` (optional)
 
 ### PWA Configuration
 
-The app is PWA-ready. Users on mobile can install it via **"Add to Home Screen"**. The `display: fullscreen` mode in `manifest.json` removes browser chrome, making tab-switching harder on mobile (which triggers the Page Visibility API penalty more reliably).
+Users can install the app via **"Add to Home Screen"** (manifest only; there is no service worker and no offline mode).
 
 ---
 
@@ -503,13 +507,13 @@ The app is PWA-ready. Users on mobile can install it via **"Add to Home Screen"*
 2. Create a feature branch: `git checkout -b feat/your-feature`
 3. Commit using conventional commits: `git commit -m "feat: add jury pool randomisation"`
 4. Push and open a Pull Request against `main`
-5. Ensure `npm run type-check` and `npm run lint` pass
+5. Ensure `npm run typecheck`, `npm run lint`, `npm test` and `npm run test:db` pass
 
 ---
 
 ## 📝 License
 
-MIT — see [LICENSE](./LICENSE) for details.
+No licence has been chosen yet, so by default **all rights are reserved**. (The earlier MIT badge was wrong: there was never a LICENSE file.)
 
 ---
 

@@ -1,4 +1,21 @@
 # 🧠 Life-RPG Protocol — System Design Document
+
+> **Status: read this first.** This document is the original design *intent* (v1.2), kept for context.
+> It is **not** a description of what is built. Known differences:
+>
+> | Idea in this document | Reality today |
+> |---|---|
+> | Offline play via a service worker (PWA) | Only an installable `manifest.json` exists. **No service worker, no offline support.** Placeholder icons (a cyan ring) are in `public/`. |
+> | "Zero-trust" focus monitor | A browser-side **soft deterrent**. A determined user can bypass it, because the server never sees tab switches. |
+> | "Immutable" audit trail | `aura_log` is **append-only** (a trigger blocks UPDATE/DELETE), which is tamper-*resistant*. A database owner can still change it, and XP grants are not logged. |
+> | Sentry, structured logging, error boundaries, client-side image compression | Not implemented. |
+> | Server components + Suspense streaming | Dashboard pages are client components. |
+> | Jury verdict calculated client-side / in the API route | Calculated inside the database (`_resolve_verdict`), see `docs/SECURITY.md`. |
+> | Security headers incl. CSP | Basic headers are set in `next.config.mjs`. **No CSP yet.** |
+>
+> Security-relevant sections (4.3 RLS, 8 Jury, 10 API, 11 Storage, 12 Realtime) were superseded by the
+> hardening work: the authoritative description is `docs/SECURITY.md`.
+
 > Version 1.2 · Status: Draft → Review · Stack: Next.js 14 · Supabase · Tailwind · Framer Motion
 
 ---
@@ -34,11 +51,11 @@ Life-RPG Protocol is a **gamified productivity platform** that enforces real-wor
 
 | Principle | Implementation |
 |-----------|---------------|
-| **Zero-Trust Focus** | Triple-layer monitoring; no single API call can be spoofed to bypass detection |
+| **Defence in Depth (focus)** | Triple-layer monitoring in the browser (tab switch, blur, mouse leave). A soft deterrent, not tamper-proof: the server cannot observe it |
 | **Reputation-Weighted Truth** | Jury votes weighted by Aura score — high-reputation users have more say |
-| **Immutable Audit Trail** | Every Aura change, XP grant, and verdict is logged with timestamps |
+| **Append-only Aura log** | Every Aura change made by the game functions is logged with a timestamp; a trigger blocks edits and deletes. XP changes are not logged |
 | **Theme Agnosticism** | Classic (cyberpunk) and Modern (minimalist) share identical component APIs |
-| **Progressive Enhancement** | Core focus functionality works offline via PWA service worker |
+| **Installable** | A web app manifest lets mobile users add it to the home screen. No offline mode |
 
 ---
 
@@ -622,89 +639,55 @@ export async function POST(req: Request) {
 
 ```
 Supabase Storage
-└── submissions (PRIVATE bucket)
+└── submissions (PRIVATE bucket, 5 MB limit, images only)
     └── {userId}/
-        └── {userQuestId}/
-            └── proof.{jpg|png|webp}   ← max 5MB, compressed client-side
+        └── {uuid}.{jpg|jpeg|png|webp|gif}
 
-Access pattern:
-  Upload → supabase.storage.from('submissions').upload(path, file)
-  Read   → supabase.storage.from('submissions').createSignedUrl(path, 3600)
-           ← signed URL expires in 1 hour; regenerated on each jury load
+Upload (browser, own folder only — enforced by storage policy):
+  supabase.storage.from('submissions').upload('{userId}/{uuid}.png', file)
+
+Hand in:    rpc('submit_quest_proof', { p_user_quest_id, p_proof_path })
+            (database checks: you own the quest, it is active, the file exists in YOUR folder)
+
+View:       GET /api/proofs/:userQuestId
+            -> database function get_proof_path_for_viewer decides who may look
+               (the owner, or a juror with >= 100 Aura while the quest is pending)
+            -> server signs a link that expires after 5 minutes
 ```
 
-**Client-side compression** before upload:
-```typescript
-// lib/image-compress.ts
-export async function compressProof(file: File): Promise<Blob> {
-  const bitmap = await createImageBitmap(file);
-  const canvas = new OffscreenCanvas(1200, Math.round(bitmap.height * 1200 / bitmap.width));
-  const ctx = canvas.getContext('2d')!;
-  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  return canvas.convertToBlob({ type: 'image/webp', quality: 0.82 });
-}
-```
+Client-side image compression (planned in v1.2) is **not implemented**.
 
 ---
 
 ## 12. Real-time Architecture
 
-Supabase Realtime (Phoenix Channels over WebSocket) is used for two scenarios:
+Only one live channel is used:
 
 | Channel | Subscribe To | Purpose |
 |---------|-------------|---------|
-| `jury:pending` | `user_quests` WHERE `status = 'pending_verification'` | Notify jury pool of new submissions |
-| `profile:{userId}` | `profiles` WHERE `id = auth.uid()` | Live Aura/XP updates on dashboard |
+| `my-profile` | `profiles` WHERE `id = <your id>` | Live Aura/XP updates on the dashboard |
 
-```typescript
-// Jury subscription example
-const channel = supabase
-  .channel('jury-pending')
-  .on('postgres_changes', {
-    event: 'UPDATE',
-    schema: 'public',
-    table: 'user_quests',
-    filter: 'status=eq.pending_verification',
-  }, (payload) => {
-    addToJuryQueue(payload.new);
-  })
-  .subscribe();
-```
+The jury queue is **not** live. Players can no longer read other players' quest rows
+(that was a privacy hole), so the queue calls `get_jury_queue()` and refreshes every 20 seconds.
 
 ---
 
-## 13. PWA & Offline Strategy
+## 13. PWA (installable manifest only)
 
-```json
-// public/manifest.json
-{
-  "name": "Life-RPG Protocol",
-  "short_name": "Life-RPG",
-  "theme_color": "#0d0d1a",
-  "background_color": "#0d0d1a",
-  "display": "fullscreen",
-  "start_url": "/dashboard",
-  "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
-  ]
-}
-```
+`public/manifest.json` lets users install the app from the browser ("Add to Home Screen"):
+`display: standalone`, theme colour `#4af7ff`, start URL `/`.
 
-**Service Worker Strategy:**
+**What does NOT exist:** a service worker, caching, offline mode, or `next-pwa`.
+The manifest references `/icon-192.png` and `/icon-512.png`; these are simple generated placeholders
+(a cyan ring) that you can replace with real artwork.
 
-| Resource | Cache Strategy |
-|----------|---------------|
-| App shell (HTML/CSS/JS) | Cache First |
-| API calls | Network First, fallback to stale |
-| Quest images | Stale While Revalidate |
-| Auth endpoints | Network Only |
-
-`display: fullscreen` in the manifest is intentional — it removes browser chrome while in focus mode, making it harder for mobile users to switch tabs without triggering the Page Visibility API.
+If offline support is wanted later, it needs a service worker (for example via `next-pwa`
+or a hand-written one) and a decision about what is safe to cache. Nothing from `/api/*`
+or the proof images should be cached.
 
 ---
 
-## 14. Performance Design
+## 14. Performance Design (ideas, mostly not implemented)
 
 - **React Server Components** for quest board — zero client JS for initial render
 - **Streaming with Suspense** — dashboard loads incrementally; stats appear instantly while quests stream
@@ -720,7 +703,7 @@ create index idx_aura_log_user_created  on aura_log(user_id, created_at desc);
 
 ---
 
-## 15. Error Handling & Observability
+## 15. Error Handling & Observability (planned, not implemented)
 
 ### Error Boundary Strategy
 
@@ -760,9 +743,9 @@ All server-side operations emit JSON logs with:
 | Realtime channels | Supabase Realtime | Partition channels by shard |
 | Storage | Supabase Storage | CDN + lifecycle policies |
 | Focus violation writes | Direct RPC | Queue via pg_notify if >1k concurrent users |
-| Jury verdict compute | Client-side calculation | Move to DB trigger or Edge Function |
+| Jury verdict compute | Database function `_resolve_verdict` (row-locked) | Already server-side |
 | Auth | Supabase GoTrue | Already horizontally scaled |
 
 ---
 
-*Life-RPG Protocol System Design v1.2 · Confidential · © 2025 Life-RPG Team*
+*Life-RPG Protocol System Design v1.2 (annotated during security hardening). The licence of this project has not been chosen yet; see docs/DECISIONS.md.*

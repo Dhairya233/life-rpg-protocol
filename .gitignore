@@ -5,15 +5,26 @@
 /.next/
 /out/
 /build
+next-env.d.ts
 
-# local environment variables (CRITICAL)
+# TypeScript incremental build cache (generated)
+*.tsbuildinfo
+
+# local environment variables (CRITICAL: never commit real keys)
 .env
-.env*.local
+.env.*
+!.env.example
 
-# debug logs
+# Supabase CLI local state (contains your project ref)
+/supabase/.temp/
+/supabase/.branches/
+
+# logs
 npm-debug.log*
 yarn-debug.log*
-yarn-error.log*
+pnpm-debug.log*
 
-# OS metadata
+# OS / editor
 .DS_Store
+.vscode/
+.idea/
