@@ -60,10 +60,10 @@ export default function DailyDiscoveryPage() {
     setErrorMsg('');
 
     try {
-      // 1. Upload to storage (assuming public bucket named 'discoveries' exists, or using a mock URL)
-      // Since setting up a bucket might be out of scope, we will use a data URL or mock URL for the prototype.
-      // We'll mock the URL upload for now to keep the demo isolated.
-      const mockImageUrl = 'uploaded_image_mock_' + Date.now();
+      // PROTOTYPE: the photo is NOT uploaded anywhere and NOT analysed.
+      // We only send a placeholder reference; the "analysis" is simulated by the server
+      // (and the API says so with `simulated: true`). The page tells the player the same.
+      const placeholderRef = 'not_uploaded_' + Date.now();
 
       // 2. Call our API 
       const res = await fetch('/api/discovery/analyze', {
@@ -72,7 +72,7 @@ export default function DailyDiscoveryPage() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          imageUrl: mockImageUrl
+          imageRef: placeholderRef
         })
       });
 
@@ -104,7 +104,7 @@ export default function DailyDiscoveryPage() {
             Daily Discovery
           </h1>
           <p className="text-[#CBD5E1] mt-2 text-sm leading-relaxed max-w-xl">
-            Document your offline routine. AI analysis of your balanced habits grants a temporary <strong className="text-[#F4C430]">Luck Boost</strong> for your next focus session. Limit one upload per day.
+            Document your offline routine. Once a day you earn a temporary <strong className="text-[#F4C430]">Luck Boost</strong> that raises your next critical-hit chance. <em>Prototype note: the photo is not uploaded or analysed; the feedback text is simulated.</em>
           </p>
         </header>
 
@@ -113,7 +113,7 @@ export default function DailyDiscoveryPage() {
             <div className="flex flex-col items-center justify-center text-center py-8">
               <CheckCircle2 size={64} className="text-[#06B6D4] mb-4 drop-shadow-[0_0_15px_rgba(6,182,212,0.4)]" />
               <h2 className="text-2xl font-bold text-white mb-2">Discovery Complete</h2>
-              <p className="text-[#CBD5E1] mb-6 italic max-w-md">"{result.summary}"</p>
+              <p className="text-[#CBD5E1] mb-6 italic max-w-md">&ldquo;{result.summary}&rdquo;</p>
               
               <div className="bg-[#131B2F] border border-white/10 px-6 py-4 rounded-xl inline-flex items-center gap-4">
                 <Sparkles className="text-[#F4C430]" />
@@ -134,7 +134,10 @@ export default function DailyDiscoveryPage() {
                 <input type="file" className="hidden" accept="image/*" onChange={handleImagePick} />
                 
                 {imagePreview ? (
-                  <img src={imagePreview} alt="Preview" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={imagePreview} alt="Preview" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                  </>
                 ) : (
                   <div className="p-6 text-center text-[#CBD5E1]">
                     <Camera size={32} className="mx-auto mb-3 opacity-50" />

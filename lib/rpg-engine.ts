@@ -1,19 +1,35 @@
 // lib/rpg-engine.ts
 // ============================================================
-// THE LIFE-RPG PROTOCOL — Core Leveling Engine
-// Mirrors the SQL calculate_level() function exactly.
+// THE LIFE-RPG PROTOCOL — Client-side leveling helpers
+//
+// NOTE: the level stored in the database (profiles.level) is computed by
+// a DB trigger with a DIFFERENT formula: floor(1 + sqrt(xp / 100)).
+// The functions below use a logarithmic curve and drive what the UI
+// SHOWS (XP bar, profile page, skill tree). So the level number on screen
+// and profiles.level in the database can differ. Which curve is "right" is
+// a game-design decision that has been left unchanged (see docs/DECISIONS.md).
 // ============================================================
+
+/**
+ * Minimum Aura needed to judge other players' quests.
+ * The database enforces this (cast_jury_vote in migration 024); the
+ * constant here is only used to explain it in the UI.
+ */
+export const JURY_MIN_AURA = 100;
 
 /**
  * Logarithmic leveling function.
  * Level = floor(log₁.₅((xp / 100) + 1)) + 1
  *
- * Milestones:
- *   Level  1 →        0 XP
- *   Level  5 →      756 XP
- *   Level 10 →    5,766 XP
- *   Level 20 →   43,923 XP
- *   Level 50 → 2,400,000 XP
+ * Milestones (from xpForLevel below):
+ *   Level  1 →              0 XP
+ *   Level  5 →            406 XP
+ *   Level 10 →          3,744 XP
+ *   Level 20 →        221,584 XP
+ *
+ * Quirk: xpForLevel rounds to a whole number, so at EXACTLY a threshold
+ * the result can still read one level lower (e.g. 406 XP -> level 4).
+ * One more XP fixes it.
  */
 export function calculateLevel(xp: number): number {
   if (xp <= 0) return 1;

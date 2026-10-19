@@ -132,7 +132,6 @@ export default function StorePage() {
     setBuying(itemId);
 
     const { data, error } = await supabase.rpc('purchase_store_item', {
-      p_user_id: profile.id,
       p_item_id: itemId,
     });
 

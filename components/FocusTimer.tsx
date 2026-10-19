@@ -17,11 +17,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '@/context/ThemeContext';
-import { deductAura } from '@/lib/supabase';
+import { reportFocusViolation } from '@/lib/supabase';
 
 // ── CONFIG ──────────────────────────────────────────────────
 const HIDDEN_GRACE_MS   = 10_000;   // 10 s hidden before fail
-const AURA_PENALTY      = 5;        // aura deducted on failure
+const AURA_PENALTY      = 5;        // shown in the UI only; the server applies its own fixed 5 (report_focus_violation)
 const WARNING_COOLDOWN  = 3_000;    // ms before warning clears if user returns
 
 // ── TYPES ───────────────────────────────────────────────────
@@ -83,10 +83,10 @@ export default function FocusTimer({
     setWarningMsg(reason);
 
     // Deduct aura
-    const newAura = await deductAura(userId, AURA_PENALTY);
+    const newAura = await reportFocusViolation();
     setPenaltyAura(newAura);
     onFailure?.(newAura);
-  }, [userId, onFailure, updateState]);
+  }, [onFailure, updateState]);
 
   // ── SUCCESS HANDLER ────────────────────────────────────────
   const triggerSuccess = useCallback(() => {

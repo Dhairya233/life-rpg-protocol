@@ -1,118 +1,82 @@
 'use client';
 // hooks/useJuryQueue.ts
+// ============================================================
+// The list of submissions the logged-in user may judge.
+//
+// The list comes from the database function get_jury_queue(), which
+// already removes your own submissions, ones you voted on, and returns
+// an empty list if you have too little Aura. The browser cannot read
+// other players' quest rows directly any more, so there is no live
+// subscription: we simply ask again every 20 seconds.
+// ============================================================
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import type { UserQuest, Quest, Profile } from '@/types/rpg';
+import { JURY_MIN_AURA } from '@/lib/rpg-engine';
+import type { QuestDifficulty, SkillType } from '@/types/rpg';
 
 export interface PendingVerificationItem {
-  userQuest: UserQuest;
-  quest: Quest;
-  submitter: Profile; // Need to know who submitted it (or maybe keep it anonymous? Let's show username to build community)
+  userQuestId: string;
+  title: string;
+  description: string | null;
+  difficulty: QuestDifficulty;
+  skillType: SkillType;
+  xpReward: number;
+  auraReward: number;
+  submitterUsername: string;
+  submitterLevel: number;
+  hasProof: boolean;
 }
+
+const REFRESH_MS = 20_000;
 
 export function useJuryQueue() {
   const [queue, setQueue] = useState<PendingVerificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [ourAura, setOurAura] = useState(0);
 
-  useEffect(() => {
-    let unmounted = false;
-    let subscription: ReturnType<typeof supabase.channel> | null = null;
+  const fetchQueue = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setLoading(false); return; }
 
-    async function fetchQueue() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+    // Your own Aura is your vote weight (you may read your own profile).
+    const { data: profile } = await supabase.from('profiles').select('aura').eq('id', user.id).single();
+    if (profile) setOurAura(profile.aura);
 
-      // Get our own aura for vote weight
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('aura')
-        .eq('id', user.id)
-        .single();
-        
-      if (profile && !unmounted) setOurAura(profile.aura);
-
-      // Fetch pending user_quests, excluding our own
-      const { data: pendingUq, error: uqError } = await supabase
-        .from('user_quests')
-        .select(`
-          *,
-          quests (*),
-          profiles:user_id (id, username, level, aura)
-        `)
-        .eq('status', 'pending_verification')
-        .neq('user_id', user.id)
-        .order('proof_submitted_at', { ascending: true }); // Oldest first
-
-      if (uqError || !pendingUq) {
-        console.error('Error fetching jury queue:', uqError);
-        setLoading(false);
-        return;
-      }
-
-      // We also only want ones we haven't voted on yet.
-      const { data: ourVotes } = await supabase
-        .from('jury_votes')
-        .select('user_quest_id')
-        .eq('juror_id', user.id);
-
-      const votedUqIds = new Set(ourVotes?.map(v => v.user_quest_id) || []);
-
-      const filtered = pendingUq
-        .filter(row => !votedUqIds.has(row.id))
-        .map(row => ({
-          userQuest: {
-            ...row,
-            quests: undefined,
-            profiles: undefined
-          } as UserQuest,
-          quest: row.quests as any as Quest,
-          submitter: row.profiles as any as Profile
-        }));
-
-      if (!unmounted) {
-        setQueue(filtered);
-        setLoading(false);
-      }
+    const { data, error } = await supabase.rpc('get_jury_queue');
+    if (error) {
+      console.error('[Life-RPG] get_jury_queue error:', error.message);
+      setLoading(false);
+      return;
     }
 
-    fetchQueue();
-
-    // Subscribe to new pending verifications
-    subscription = supabase
-      .channel('jury_queue')
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'user_quests',
-        filter: "status=eq.pending_verification"
-      }, () => {
-        // Refetch on updates
-        fetchQueue();
-      })
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'user_quests',
-        // if status changes from pending_verification to completed/failed, remove it
-      }, (payload) => {
-        if (payload.new.status !== 'pending_verification') {
-          setQueue(prev => prev.filter(item => item.userQuest.id !== payload.new.id));
-        }
-      })
-      .subscribe();
-
-    return () => {
-      unmounted = true;
-      if (subscription) supabase.removeChannel(subscription);
-    };
+    setQueue((data ?? []).map((row: any): PendingVerificationItem => ({
+      userQuestId: row.user_quest_id,
+      title: row.title,
+      description: row.description,
+      difficulty: row.difficulty,
+      skillType: row.skill_type,
+      xpReward: row.xp_reward,
+      auraReward: row.aura_reward,
+      submitterUsername: row.submitter_username,
+      submitterLevel: row.submitter_level,
+      hasProof: row.has_proof,
+    })));
+    setLoading(false);
   }, []);
 
-  // Removed voted items optimistically
+  useEffect(() => {
+    fetchQueue();
+    const timer = setInterval(fetchQueue, REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [fetchQueue]);
+
+  // After voting, hide the card straight away (the next refresh confirms it).
   const removeFromQueue = (userQuestId: string) => {
-    setQueue(prev => prev.filter(item => item.userQuest.id !== userQuestId));
+    setQueue(prev => prev.filter(item => item.userQuestId !== userQuestId));
   };
 
-  return { queue, loading, ourAura, removeFromQueue };
+  const canJudge = ourAura >= JURY_MIN_AURA;
+
+  return { queue, loading, ourAura, canJudge, removeFromQueue };
 }

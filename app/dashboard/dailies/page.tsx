@@ -28,6 +28,8 @@ export default function DailiesPage() {
 
   const [generating, setGenerating] = useState(false);
   const [aiQuests, setAiQuests] = useState<AIQuest[]>([]);
+  // 'ai' = written by the AI model, 'sample' = built-in examples (no AI key / AI unavailable)
+  const [aiSource, setAiSource] = useState<'ai' | 'sample' | null>(null);
   const [acceptedQuests, setAcceptedQuests] = useState<Set<number>>(new Set());
 
   const todayStr = new Date().toISOString().split('T')[0];
@@ -74,7 +76,7 @@ export default function DailiesPage() {
     if (hasClaimedSignIn || claiming) return;
     setClaiming(true);
     // Explicitly call the update_streak function to grant rewards
-    await supabase.rpc('update_streak', { p_user_id: profile.id });
+    await supabase.rpc('update_streak');
     await refreshProfile();
     setClaiming(false);
   };
@@ -82,23 +84,13 @@ export default function DailiesPage() {
   const handleSaveDiary = async () => {
     if (!diaryText.trim()) return;
     setSavingDiary(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    // One editable entry per day: the database creates or updates it.
+    const { data: savedId, error: saveError } = await supabase.rpc('save_daily_entry', {
+      p_entry: diaryText.trim(),
+    });
+    if (savedId) setLogId(savedId as string);
 
-    let errorObj;
-    if (logId) {
-      const { error } = await supabase.from('daily_logs').update({ entry: diaryText.trim() }).eq('id', logId);
-      errorObj = error;
-    } else {
-      const { data, error } = await supabase.from('daily_logs')
-        .insert({ user_id: user.id, entry: diaryText.trim() })
-        .select('id')
-        .single();
-      errorObj = error;
-      if (data) setLogId(data.id);
-    }
-    
-    if (!errorObj) {
+    if (!saveError) {
       setDiarySaved(true);
       if (!hasClaimedSignIn && !claiming) {
         await handleClaimSignIn();
@@ -117,25 +109,27 @@ export default function DailiesPage() {
         body: JSON.stringify({ entry: diaryText.trim() })
       });
       const data = await res.json();
-      if (data.quests) setAiQuests(data.quests);
+      if (data.quests) {
+        setAiQuests(data.quests);
+        setAiSource(data.source === 'ai' ? 'ai' : 'sample');
+      }
     } catch(e) { console.error('Gen Plan Error:', e); }
     setGenerating(false);
   };
 
   const acceptAiQuest = async (index: number, quest: AIQuest) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    // We create the quest assuming the user intends to do it tomorrow
-    await supabase.from('private_quests').insert({
-      user_id: user.id,
-      title: quest.title,
-      description: quest.description,
-      skill_type: quest.skill_type,
-      xp_reward: quest.xp_reward,
-      duration_minutes: quest.duration_minutes,
-      status: 'active'
+    // The database checks the limits and attaches the quest to the logged-in user.
+    const { error } = await supabase.rpc('create_private_quest', {
+      p_title: quest.title,
+      p_description: quest.description,
+      p_skill_type: quest.skill_type,
+      p_xp_reward: quest.xp_reward,
+      p_duration_minutes: quest.duration_minutes,
     });
+    if (error) {
+      console.error('[Life-RPG] create_private_quest error:', error.message);
+      return;
+    }
 
     setAcceptedQuests(prev => {
       const n = new Set(prev);
@@ -212,10 +206,10 @@ export default function DailiesPage() {
               disabled={generating || !diarySaved}
               className={`flex-1 px-6 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 border 
                 ${diarySaved ? 'bg-slate-800 hover:bg-slate-700 text-cyan-400 border-cyan-500/30' : 'bg-slate-800/50 text-slate-600 border-slate-800'}`}
-              title={diarySaved ? "Ask the AI to generate tomorrow's quests based on this log" : "Save your diary first"}
+              title={diarySaved ? "Suggest tomorrow's quests based on this log" : "Save your diary first"}
             >
               <Sparkles size={16} /> 
-              {generating ? 'Focusing AI...' : 'Generate Next-Day Plan'}
+              {generating ? 'Thinking...' : 'Generate Next-Day Plan'}
             </button>
           </div>
         </div>
@@ -229,11 +223,19 @@ export default function DailiesPage() {
               className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-[0_0_30px_-5px_var(--accent-glow)] overflow-hidden"
             >
               <h2 className="text-xl font-bold text-slate-100 display-font m-0 mb-1 flex items-center gap-2">
-                <Sparkles size={18} className="text-cyan-400" /> Tomorrow's Protocol
+                <Sparkles size={18} className="text-cyan-400" /> Tomorrow&apos;s Protocol
               </h2>
-              <p className="text-sm text-slate-400 mb-5">
-                The Architect has analyzed your log and recommends these objective routines. Accept them to automatically schedule them as Private Quests.
-              </p>
+              {/* Honest label: tells the player whether an AI model really wrote these. */}
+              {aiSource === 'sample' ? (
+                <p className="text-sm text-amber-400 mb-5">
+                  Sample quests — AI suggestions are not available right now, so these are built-in examples,
+                  not based on your log. Accept them to add them as Private Quests.
+                </p>
+              ) : (
+                <p className="text-sm text-slate-400 mb-5">
+                  AI-generated suggestions based on your log. Accept them to add them as Private Quests.
+                </p>
+              )}
               
               <div className="flex flex-col gap-4">
                 {aiQuests.map((quest, idx) => {

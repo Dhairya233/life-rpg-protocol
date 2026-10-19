@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { supabase } from '@/lib/supabase';
+import { supabase, reportFocusViolation } from '@/lib/supabase';
 import { useFocusMonitor } from '@/hooks/useFocusMonitor';
 import FocusTimer from '@/components/FocusTimer';
 import ViolationOverlay from '@/components/ViolationOverlay';
@@ -117,15 +117,7 @@ function FocusJailContent() {
   const handleAuraPenalty = useCallback(async () => {
     if (sessionState !== 'active') return;
     setSessionState('failed');
-    try {
-      await fetch('/api/aura/deduct', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ amount: 5, reason: 'focus_violation' }),
-      });
-    } catch (err) {
-      console.error('Failed to deduct aura', err);
-    }
+    await reportFocusViolation();   // fixed 5 Aura, applied to the logged-in user by the server
   }, [sessionState]);
 
   const { isViolated } = useFocusMonitor(handleAuraPenalty);

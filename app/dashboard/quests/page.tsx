@@ -51,20 +51,14 @@ function CreatePrivateQuestForm({
     if (!title.trim()) { setError('Title is required.'); return; }
     setSaving(true);
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setError('Not authenticated.'); setSaving(false); return; }
-
-    const { error: insertError } = await supabase
-      .from('private_quests')
-      .insert({
-        user_id: user.id,
-        title:   title.trim(),
-        description: desc.trim() || null,
-        skill_type: skill,
-        xp_reward: Math.min(200, Math.max(10, xp)),
-        duration_minutes: Math.max(5, minutes),
-        status: 'active',
-      });
+    // The database attaches the quest to the logged-in user and checks the limits.
+    const { error: insertError } = await supabase.rpc('create_private_quest', {
+      p_title:            title.trim(),
+      p_description:      desc.trim() || null,
+      p_skill_type:       skill,
+      p_xp_reward:        Math.min(200, Math.max(10, xp)),
+      p_duration_minutes: Math.max(5, minutes),
+    });
 
     if (insertError) {
       setError(insertError.message);
@@ -237,17 +231,11 @@ export default function QuestsPage() {
 
   // Complete a private quest (honor system)
   const handleCompletePrivate = async (id: string) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
     const quest = privateQuests.find(q => q.id === id);
     if (!quest) return;
 
-    // We now use the safe RPC that caps daily private quest XP at 500
-    await supabase.rpc('complete_private_quest', {
-      p_quest_id: id,
-      p_user_id: user.id
-    });
+    // The database checks ownership and caps private-quest XP at 500 per day.
+    await supabase.rpc('complete_private_quest', { p_quest_id: id });
 
     // Refresh
     setPrivateQuests(prev => prev.map(q => q.id === id ? { ...q, status: 'completed' } : q));

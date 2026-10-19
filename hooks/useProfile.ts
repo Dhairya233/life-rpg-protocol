@@ -45,26 +45,32 @@ export function useProfile(): UseProfileReturn {
   useEffect(() => {
     fetchProfile();
 
-    // Realtime subscription — live updates when profile changes
-    const channel = supabase
-      .channel('my-profile')
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'profiles',
-      }, (payload) => {
+    // Realtime subscription — live updates when OUR profile changes.
+    // (Row Level Security already hides other players' rows from us.)
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      channel = supabase
+        .channel('my-profile')
+        .on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'profiles',
+          filter: `id=eq.${user.id}`,
+        }, (payload) => {
         // Only update if it's our own profile
-        setProfile((current) => {
-          if (current && payload.new.id === current.id) {
-            return payload.new as Profile;
-          }
-          return current;
-        });
-      })
-      .subscribe();
+          setProfile((current) => {
+            if (current && payload.new.id === current.id) {
+              return payload.new as Profile;
+            }
+            return current;
+          });
+        })
+        .subscribe();
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      if (channel) supabase.removeChannel(channel);
     };
   }, [fetchProfile]);
 

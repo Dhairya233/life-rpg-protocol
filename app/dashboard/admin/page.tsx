@@ -1,4 +1,12 @@
 'use client';
+// ============================================================
+// Game Master dashboard.
+//
+// This page holds NO power of its own. Everything that changes data goes
+// through /api/admin/* routes, and each of those checks on the SERVER that
+// the caller's role in the database is 'admin'. (Hiding this page for
+// non-admins is only a convenience; the routes are the real lock.)
+// ============================================================
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -20,6 +28,18 @@ interface GlobalQuest {
 const ALL_SKILLS: SkillType[] = ['focus', 'coding', 'fitness', 'creative'];
 const ALL_DIFFS: QuestDifficulty[] = ['easy', 'medium', 'hard', 'legendary'];
 
+/** Call an admin route. Returns the parsed JSON, or throws with the server's message. */
+async function adminFetch(url: string, method: 'GET' | 'POST' | 'PATCH' | 'DELETE' = 'GET', body?: unknown) {
+  const res = await fetch(url, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  return data;
+}
+
 export default function AdminDashboardPage() {
   const [activeTab, setActiveTab] = useState<'analytics' | 'forge' | 'court' | 'ledger'>('analytics');
 
@@ -30,34 +50,13 @@ export default function AdminDashboardPage() {
 
   const loadAnalytics = async () => {
     setLoadingAnalytics(true);
-    
-    // 1. Players & Economy (We pull all XPs to sum them up)
-    const { data: profiles } = await supabase.from('profiles').select('xp');
-    const totalXp = profiles?.reduce((sum, p) => sum + (p.xp || 0), 0) || 0;
-    
-    // 2. Quests count
-    const { count: questCount } = await supabase.from('quests').select('*', { count: 'exact', head: true });
-    
-    // 3. Pending court count
-    const { count: pendingCount } = await supabase.from('user_quests')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'pending_verification');
-    
-    setStats({
-      players: profiles?.length || 0,
-      economyXp: totalXp,
-      quests: questCount || 0,
-      pending: pendingCount || 0
-    });
-
-    // 4. Activity Feed (Recent Daily Logs + Profile joins)
-    const { data: logs } = await supabase
-      .from('daily_logs')
-      .select('*, profiles(username, aura)')
-      .order('created_at', { ascending: false })
-      .limit(15);
-      
-    if (logs) setActivityFeed(logs);
+    try {
+      const data = await adminFetch('/api/admin/overview');
+      setStats({ players: data.players, economyXp: data.economyXp, quests: data.quests, pending: data.pending });
+      setActivityFeed(data.activity);
+    } catch (err) {
+      console.error('[Admin] overview failed:', err);
+    }
     setLoadingAnalytics(false);
   };
 
@@ -101,17 +100,12 @@ export default function AdminDashboardPage() {
 
   const loadCourt = async () => {
     setLoadingCourt(true);
-    const { data } = await supabase
-      .from('user_quests')
-      .select(`
-        *,
-        quest:quests (title, xp_reward, aura_reward, skill_type, difficulty),
-        submitter:profiles!user_quests_user_id_fkey (username)
-      `)
-      .eq('status', 'pending_verification')
-      .order('proof_submitted_at', { ascending: true });
-    
-    if (data) setPendingQuests(data);
+    try {
+      const data = await adminFetch('/api/admin/court');
+      setPendingQuests(data.items);
+    } catch (err) {
+      console.error('[Admin] court failed:', err);
+    }
     setLoadingCourt(false);
   };
 
@@ -127,8 +121,12 @@ export default function AdminDashboardPage() {
 
   const loadLedger = async () => {
     setLoadingLedger(true);
-    const { data } = await supabase.from('profiles').select('*').order('level', { ascending: false });
-    if (data) setProfiles(data);
+    try {
+      const data = await adminFetch('/api/admin/players');
+      setProfiles(data.players);
+    } catch (err) {
+      console.error('[Admin] players failed:', err);
+    }
     setLoadingLedger(false);
   };
 
@@ -140,56 +138,62 @@ export default function AdminDashboardPage() {
     e.preventDefault();
     setSaving(true);
     if (editingProfile) {
-      await supabase.from('profiles').update({
-        xp: editingProfile.xp,
-        aura: editingProfile.aura,
-        role: editingProfile.role,
-        is_banned: editingProfile.is_banned || false
-      }).eq('id', editingProfile.id);
+      try {
+        // Role is intentionally not sent: roles can only be changed with SQL.
+        await adminFetch('/api/admin/players', 'PATCH', {
+          userId: editingProfile.id,
+          xp: editingProfile.xp,
+          aura: editingProfile.aura,
+          isBanned: editingProfile.is_banned || false,
+        });
+      } catch (err) {
+        alert(err instanceof Error ? err.message : 'Could not save');
+      }
     }
     setSaving(false);
     setEditingProfile(null);
     loadLedger();
   };
 
-  // GOD HAND ACTIONS
-  const handleApprove = async (uqId: string, userId: string, xp: number, aura: number) => {
-    await supabase.from('user_quests').update({ status: 'completed', jury_verdict: 1, completed_at: new Date().toISOString() }).eq('id', uqId);
-    await supabase.rpc('grant_quest_rewards', { p_user_id: userId, p_xp_amount: xp, p_aura_amount: aura });
+  // GOD HAND ACTIONS — the database function does the whole job in one transaction
+  const settleSubmission = async (uqId: string, action: 'approve' | 'reject' | 'penalize') => {
+    try {
+      await adminFetch('/api/admin/court', 'POST', { userQuestId: uqId, action });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Action failed');
+    }
     loadCourt();
   };
 
-  const handleReject = async (uqId: string, userId: string) => {
-    await supabase.from('user_quests').update({ status: 'failed', jury_verdict: 0 }).eq('id', uqId);
-    await supabase.rpc('deduct_aura', { p_user_id: userId, p_amount: 10, p_reason: 'admin_rejection' });
-    loadCourt();
-  };
-
-  const handlePenalize = async (uqId: string, userId: string) => {
+  const handleApprove = (uqId: string) => settleSubmission(uqId, 'approve');
+  const handleReject = (uqId: string) => settleSubmission(uqId, 'reject');
+  const handlePenalize = (uqId: string) => {
     if (confirm("Are you sure you want to apply a strict 50 Aura penalty to this user?")) {
-      await supabase.from('user_quests').update({ status: 'failed', jury_verdict: -1 }).eq('id', uqId);
-      await supabase.rpc('deduct_aura', { p_user_id: userId, p_amount: 50, p_reason: 'admin_penalty' });
-      loadCourt();
+      settleSubmission(uqId, 'penalize');
     }
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    if (formData.id) {
-      await supabase.from('quests').update(formData).eq('id', formData.id);
-    } else {
-      await supabase.from('quests').insert(formData);
+    try {
+      await adminFetch('/api/admin/quests', 'POST', formData);   // has an id = edit, no id = create
+      setShowForm(false);
+      setFormData({ title: '', description: '', skill_type: 'focus', difficulty: 'medium', xp_reward: 50, duration_minutes: 30 });
+      loadQuests();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not save quest');
     }
     setSaving(false);
-    setShowForm(false);
-    setFormData({ title: '', description: '', skill_type: 'focus', difficulty: 'medium', xp_reward: 50, duration_minutes: 30 });
-    loadQuests();
   };
 
   const handleDelete = async (id: string, title: string) => {
     if (confirm(`Are you sure you want to permanently delete "${title}"?`)) {
-      await supabase.from('quests').delete().eq('id', id);
+      try {
+        await adminFetch('/api/admin/quests', 'DELETE', { id });
+      } catch (err) {
+        alert(err instanceof Error ? err.message : 'Could not delete quest');
+      }
       loadQuests();
     }
   };
@@ -305,7 +309,7 @@ export default function AdminDashboardPage() {
                             <span className="text-sm font-bold text-slate-300">{log.profiles?.username || 'Phantom'} logged an entry</span>
                             <span className="text-[10px] text-slate-500 font-mono tracking-tighter flex items-center gap-1"><Clock size={10} /> {new Date(log.created_at).toLocaleString()}</span>
                           </div>
-                          <p className="text-sm text-slate-400 m-0 mb-2 italic line-clamp-2">"{log.entry}"</p>
+                          <p className="text-sm text-slate-500 m-0 mb-2 italic">Entry text is private and not shown to admins.</p>
                           <div className="flex items-center gap-3">
                              {log.xp_awarded > 0 && <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">+{log.xp_awarded} XP Rewarded</span>}
                           </div>
@@ -473,14 +477,12 @@ export default function AdminDashboardPage() {
                       
                       <h3 className="text-slate-100 font-bold text-xl m-0 tracking-tight">{pq.quest?.title || 'Unknown Quest'}</h3>
                       
-                      <div className="bg-slate-950/50 border border-slate-800 rounded-lg p-3 text-sm text-slate-300 italic">
-                        "{pq.proof_url}"
-                      </div>
-                      
-                      {pq.proof_url?.startsWith('http') && (
-                        <a href={pq.proof_url} target="_blank" rel="noreferrer" className="text-indigo-400 hover:text-indigo-300 flex items-center gap-1.5 text-xs font-bold w-fit mt-1">
-                          <ExternalLink size={12} /> Open Evidence
+                      {pq.proof_link ? (
+                        <a href={pq.proof_link} target="_blank" rel="noreferrer" className="text-indigo-400 hover:text-indigo-300 flex items-center gap-1.5 text-xs font-bold w-fit mt-1">
+                          <ExternalLink size={12} /> Open Evidence (link expires in 5 min)
                         </a>
+                      ) : (
+                        <div className="text-xs text-slate-500">No proof file attached.</div>
                       )}
                       
                       <div className="flex items-center gap-4 text-xs font-mono font-bold mt-2">
@@ -493,21 +495,21 @@ export default function AdminDashboardPage() {
                       <p className="text-[10px] uppercase tracking-widest font-bold text-slate-500 text-center mb-1">God Hand Override</p>
                       
                       <button 
-                        onClick={() => handleApprove(pq.id, pq.user_id, pq.quest?.xp_reward || 0, pq.quest?.aura_reward || 0)} 
+                        onClick={() => handleApprove(pq.id)} 
                         className="flex items-center justify-center gap-2 w-full py-2.5 bg-green-500/10 hover:bg-green-500 border border-green-500/30 hover:border-green-400 text-green-400 hover:text-white rounded-lg transition-all font-bold text-sm"
                       >
                         <ThumbsUp size={14} /> Approve
                       </button>
                       
                       <button 
-                        onClick={() => handleReject(pq.id, pq.user_id)} 
+                        onClick={() => handleReject(pq.id)} 
                         className="flex items-center justify-center gap-2 w-full py-2.5 bg-orange-500/10 hover:bg-orange-500 border border-orange-500/30 hover:border-orange-400 text-orange-400 hover:text-white rounded-lg transition-all font-bold text-sm"
                       >
                         <ThumbsDown size={14} /> Reject (-10 Aura)
                       </button>
                       
                       <button 
-                        onClick={() => handlePenalize(pq.id, pq.user_id)} 
+                        onClick={() => handlePenalize(pq.id)} 
                         className="flex items-center justify-center gap-2 w-full py-2.5 bg-red-500/10 hover:bg-red-500 border border-red-500/30 hover:border-red-400 text-red-500 hover:text-white rounded-lg transition-all font-bold text-sm mt-2"
                       >
                         <AlertOctagon size={14} /> SPAM (-50 Aura)
@@ -570,11 +572,10 @@ export default function AdminDashboardPage() {
                           </div>
                           
                           <div className="flex flex-col gap-1.5">
-                            <label className="text-[10px] uppercase font-bold tracking-widest text-slate-500">Role</label>
-                            <select value={editingProfile.role || 'user'} onChange={e => setEditingProfile({...editingProfile, role: e.target.value})} className="bg-slate-950 border border-slate-800 rounded text-slate-200 px-3 py-2 text-sm cursor-pointer focus:border-teal-500 outline-none">
-                              <option value="user">User</option>
-                              <option value="admin">Admin</option>
-                            </select>
+                            <label className="text-[10px] uppercase font-bold tracking-widest text-slate-500">Role (read-only)</label>
+                            <div className="bg-slate-950 border border-slate-800 rounded text-slate-400 px-3 py-2 text-sm">
+                              {editingProfile.role || 'user'}
+                            </div>
                           </div>
                           
                           <div className="flex flex-col gap-1.5 justify-end">

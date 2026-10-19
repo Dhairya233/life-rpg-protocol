@@ -6,13 +6,10 @@ import { supabase } from '@/lib/supabase';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
-    async function updateStreak() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        await supabase.rpc('update_streak', { p_user_id: user.id });
-      }
-    }
-    updateStreak();
+    // The server works out who is logged in; it pays the daily reward once a day.
+    supabase.rpc('update_streak').then(({ error }) => {
+      if (error) console.error('[Life-RPG] update_streak error:', error.message);
+    });
   }, []);
 
   return (

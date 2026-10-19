@@ -82,18 +82,15 @@ export async function fetchMyProfile(): Promise<Profile | null> {
 
 // ── AURA HELPERS ───────────────────────────────────────────
 
-export async function deductAura(
-  userId: string,
-  amount: number,
-  reason: string = 'focus_violation'
-): Promise<number | null> {
-  const { data, error } = await supabase.rpc('deduct_aura', {
-    p_user_id: userId,
-    p_amount: amount,
-    p_reason: reason,
-  });
+/**
+ * Tell the server the focus jail was broken. The server decides who is
+ * penalised (the logged-in user) and by how much (a fixed 5 Aura).
+ * Returns the new Aura balance, or null on error.
+ */
+export async function reportFocusViolation(): Promise<number | null> {
+  const { data, error } = await supabase.rpc('report_focus_violation');
   if (error) {
-    console.error('[Life-RPG] deductAura error:', error.message);
+    console.error('[Life-RPG] reportFocusViolation error:', error.message);
     return null;
   }
   return data as number;
@@ -114,14 +111,9 @@ export async function fetchQuests(): Promise<Quest[]> {
   return data as Quest[];
 }
 
-export async function startQuest(
-  userId: string,
-  questId: string
-): Promise<string | null> {
-  const { data, error } = await supabase.rpc('start_quest', {
-    p_user_id: userId,
-    p_quest_id: questId,
-  });
+/** Start (or resume) a quest. Returns the user_quest id, or null on error. */
+export async function startQuest(questId: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc('start_quest', { p_quest_id: questId });
   if (error) {
     console.error('[Life-RPG] startQuest error:', error.message);
     return null;
@@ -129,15 +121,14 @@ export async function startQuest(
   return data as string;
 }
 
-export async function submitQuestProof(
-  userQuestId: string,
-  proofUrl: string,
-  note?: string
-): Promise<boolean> {
+/**
+ * Hand in proof. `proofPath` is the file's path inside the private
+ * "submissions" bucket ({user id}/{uuid}.{ext}) — not a URL.
+ */
+export async function submitQuestProof(userQuestId: string, proofPath: string): Promise<boolean> {
   const { error } = await supabase.rpc('submit_quest_proof', {
     p_user_quest_id: userQuestId,
-    p_proof_url: proofUrl,
-    p_note: note ?? null,
+    p_proof_path: proofPath,
   });
   if (error) {
     console.error('[Life-RPG] submitQuestProof error:', error.message);

@@ -1,10 +1,9 @@
 'use client';
 // components/JuryCard.tsx
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '@/context/ThemeContext';
-import { supabase } from '@/lib/supabase';
 import type { PendingVerificationItem } from '@/hooks/useJuryQueue';
 import { SKILL_TYPE_LABELS, DIFFICULTY_COLORS } from '@/types/rpg';
 import { Check, X, Shield, ExternalLink, Image as ImageIcon } from 'lucide-react';
@@ -20,20 +19,28 @@ export default function JuryCard({ item, ourAura, onVote }: JuryCardProps) {
   const [voting, setVoting] = useState(false);
   const [voted, setVoted] = useState<'approve' | 'reject' | null>(null);
 
-  const { quest, userQuest, submitter } = item;
-  const diffColor = DIFFICULTY_COLORS[quest.difficulty];
-  const skill = SKILL_TYPE_LABELS[quest.skill_type];
+  const diffColor = DIFFICULTY_COLORS[item.difficulty];
+  const skill = SKILL_TYPE_LABELS[item.skillType];
 
-  // Supabase storage gives us public URLs if the bucket is public, 
-  // but "submissions" bucket was created with TRUE or FALSE? 
-  // We can just get publicUrl since RLS read policy allows all.
-  const { data: { publicUrl } } = supabase.storage
-    .from('submissions')
-    .getPublicUrl(userQuest.proof_url || '');
+  // The proof image lives in a PRIVATE bucket. We ask our server for a
+  // short-lived link (valid 5 minutes); the server first checks that we
+  // are allowed to judge this submission.
+  const [proofUrl, setProofUrl] = useState<string | null>(null);
+  const [proofFailed, setProofFailed] = useState(false);
+
+  useEffect(() => {
+    if (!item.hasProof) return;
+    let cancelled = false;
+    fetch(`/api/proofs/${item.userQuestId}`)
+      .then(res => (res.ok ? res.json() : Promise.reject(new Error('no link'))))
+      .then(data => { if (!cancelled) setProofUrl(data.url); })
+      .catch(() => { if (!cancelled) setProofFailed(true); });
+    return () => { cancelled = true; };
+  }, [item.userQuestId, item.hasProof]);
 
   const handleVote = async (approve: boolean) => {
     setVoting(true);
-    const success = await onVote(userQuest.id, approve);
+    const success = await onVote(item.userQuestId, approve);
     if (success) {
       setVoted(approve ? 'approve' : 'reject');
     } else {
@@ -55,14 +62,14 @@ export default function JuryCard({ item, ourAura, onVote }: JuryCardProps) {
           <span className="text-2xl">{skill.emoji}</span>
         </div>
         <div className="flex flex-col gap-1 w-full">
-          <h3 className="text-slate-200 font-bold text-lg m-0 leading-tight">{quest.title}</h3>
+          <h3 className="text-slate-200 font-bold text-lg m-0 leading-tight">{item.title}</h3>
           <div className="flex flex-row items-center gap-3 flex-wrap">
-            <span className="text-xs px-2 py-1 rounded-md font-bold uppercase tracking-wider" style={{ background: diffColor, color: quest.difficulty === 'hard' ? '#fff' : '#000' }}>
-              {quest.difficulty}
+            <span className="text-xs px-2 py-1 rounded-md font-bold uppercase tracking-wider" style={{ background: diffColor, color: item.difficulty === 'hard' ? '#fff' : '#000' }}>
+              {item.difficulty}
             </span>
             <span className="text-xs text-slate-400 flex flex-row items-center gap-2">
-              Submitted by <span className="text-slate-200 font-bold">{submitter.username}</span> 
-              <span className="bg-slate-800 px-2 py-1 rounded font-mono text-[10px]">Lvl {submitter.level}</span>
+              Submitted by <span className="text-slate-200 font-bold">{item.submitterUsername}</span> 
+              <span className="bg-slate-800 px-2 py-1 rounded font-mono text-[10px]">Lvl {item.submitterLevel}</span>
             </span>
           </div>
         </div>
@@ -70,11 +77,23 @@ export default function JuryCard({ item, ourAura, onVote }: JuryCardProps) {
 
       {/* Proof Viewer */}
       <div className="proof-viewer">
-        {userQuest.proof_url ? (
+        {item.hasProof && proofFailed ? (
+          <div className="no-proof">
+            <ImageIcon size={32} opacity={0.2} />
+            <p>Could not load the proof image. Try again in a moment.</p>
+          </div>
+        ) : item.hasProof && !proofUrl ? (
+          <div className="no-proof">
+            <ImageIcon size={32} opacity={0.2} />
+            <p>Loading proof...</p>
+          </div>
+        ) : proofUrl ? (
           <div className="proof-image-wrapper">
-             {/* Note: In a real app we might use object-fit cover or auto, using img for simplicity */}
-            <img src={publicUrl} alt="Quest Proof" className="proof-image" loading="lazy" />
-            <a href={publicUrl} target="_blank" rel="noopener noreferrer" className="fullscreen-btn">
+            {/* Plain <img> on purpose: this is a private, expiring signed link,
+                which Next's image optimizer would try to cache. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={proofUrl} alt="Quest Proof" className="proof-image" loading="lazy" />
+            <a href={proofUrl} target="_blank" rel="noopener noreferrer" className="fullscreen-btn">
               <ExternalLink size={14} /> Full Size
             </a>
           </div>

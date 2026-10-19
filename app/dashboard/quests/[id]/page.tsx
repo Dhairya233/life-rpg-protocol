@@ -59,7 +59,7 @@ export default function QuestDetailPage() {
     setStarting(true);
     setError(null);
 
-    const uqId = await startQuest(userId, questId);
+    const uqId = await startQuest(questId);
     if (uqId) {
       setUserQuest({
         id: uqId,
@@ -85,10 +85,10 @@ export default function QuestDetailPage() {
     setStarting(true);
     setError(null);
 
-    const { error: delError } = await supabase
-      .from('user_quests')
-      .delete()
-      .eq('id', userQuest.id);
+    // Only a quest that is not submitted yet can be abandoned (checked by the database).
+    const { error: delError } = await supabase.rpc('abandon_quest', {
+      p_user_quest_id: userQuest.id,
+    });
 
     if (delError) {
       setError('Failed to cancel quest.');

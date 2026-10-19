@@ -5,10 +5,14 @@
 //
 // Flow:
 //   1. User captures/selects an image
-//   2. Preview shown with optional note
-//   3. Upload to Supabase 'submissions' bucket: submissions/{userId}/{uuid}.{ext}
-//   4. On success → insert user_quests record (status: pending_verification)
+//   2. Preview shown
+//   3. Upload to the PRIVATE 'submissions' bucket as {userId}/{uuid}.{ext}
+//   4. Call the database function submit_quest_proof with that path
+//      (status becomes pending_verification)
 //   5. Emit onSubmitted callback with the created UserQuest
+//
+// Images are never shown through a public URL: jurors and owners get
+// short-lived signed links from /api/proofs/:id.
 // ============================================================
 
 import { useState, useRef, useCallback } from 'react';
@@ -28,10 +32,17 @@ interface ProofUploadProps {
 }
 
 // ── HELPERS ───────────────────────────────────────────────────
+// The extension comes from the (checked) file type, never from the file
+// name, because the storage policy only accepts these image extensions.
+const EXTENSION_BY_TYPE: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png':  'png',
+  'image/webp': 'webp',
+  'image/gif':  'gif',
+};
+
 function generateStoragePath(userId: string, file: File): string {
-  const ext  = file.name.split('.').pop() ?? 'jpg';
-  const uuid = crypto.randomUUID();
-  return `${userId}/${uuid}.${ext}`;
+  return `${userId}/${crypto.randomUUID()}.${EXTENSION_BY_TYPE[file.type]}`;
 }
 
 function formatBytes(bytes: number): string {
@@ -41,7 +52,7 @@ function formatBytes(bytes: number): string {
 }
 
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-const MAX_SIZE_MB    = 10;
+const MAX_SIZE_MB    = 5;    // same limit as the storage bucket
 
 // ── COMPONENT ─────────────────────────────────────────────────
 export default function ProofUpload({
@@ -55,7 +66,6 @@ export default function ProofUpload({
   const [uploadState,  setUploadState]  = useState<UploadState>('idle');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl,   setPreviewUrl]   = useState<string | null>(null);
-  const [note,         setNote]         = useState('');
   const [progress,     setProgress]     = useState(0);     // 0–100
   const [errorMsg,     setErrorMsg]     = useState('');
   const [submittedQuest, setSubmittedQuest] = useState<UserQuest | null>(null);
@@ -121,16 +131,12 @@ export default function ProofUpload({
 
       setProgress(80);
 
-      // 2. Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('submissions')
-        .getPublicUrl(storageData.path);
-
-      // 3. Start quest + submit proof
-      const userQuestId = await startQuest(userId, questId);
+      // 2. Start (or resume) the quest, then hand in the proof file's path.
+      //    The database checks that you own the quest and the file.
+      const userQuestId = await startQuest(questId);
       if (!userQuestId) throw new Error('Failed to start quest. Please try again.');
 
-      const submitted = await submitQuestProof(userQuestId, publicUrl, note.trim() || undefined);
+      const submitted = await submitQuestProof(userQuestId, storageData.path);
       if (!submitted) throw new Error('Failed to save quest record. Please try again.');
 
       const userQuest: UserQuest = {
@@ -138,7 +144,7 @@ export default function ProofUpload({
         user_id: userId,
         quest_id: questId,
         status: 'pending_verification',
-        proof_url: publicUrl,
+        proof_url: storageData.path,
         started_at: new Date().toISOString(),
         completed_at: null,
         aura_penalty: 0,
@@ -156,14 +162,13 @@ export default function ProofUpload({
       setErrorMsg(message);
       setUploadState('error');
     }
-  }, [selectedFile, userId, questId, note, onSubmitted]);
+  }, [selectedFile, userId, questId, onSubmitted]);
 
   // ── RESET ──────────────────────────────────────────────────
   const reset = useCallback(() => {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setSelectedFile(null);
     setPreviewUrl(null);
-    setNote('');
     setProgress(0);
     setErrorMsg('');
     setUploadState('idle');
@@ -274,30 +279,6 @@ export default function ProofUpload({
               >
                 Change
               </button>
-            </div>
-
-            {/* Optional note */}
-            <div>
-              <label className="text-xs uppercase tracking-widest opacity-50 block mb-1.5"
-                style={{ color: 'var(--text-secondary)' }}>
-                Completion Note (optional)
-              </label>
-              <textarea
-                value={note}
-                onChange={e => setNote(e.target.value)}
-                placeholder={`Describe what you did for: ${questTitle}`}
-                rows={3}
-                maxLength={500}
-                className="w-full rounded-xl px-4 py-3 text-sm resize-none outline-none border transition-all"
-                style={{
-                  background: 'var(--bg-secondary)',
-                  borderColor: 'var(--border)',
-                  color: 'var(--text-primary)',
-                }}
-              />
-              <p className="text-xs text-right mt-1 opacity-30" style={{ color: 'var(--text-secondary)' }}>
-                {note.length}/500
-              </p>
             </div>
 
             {/* Action buttons */}

@@ -1,89 +1,46 @@
-import { NextResponse } from 'next/server';
-import { createSupabaseServer } from '@/lib/supabase-server';
+// POST /api/discovery/analyze — the "Daily Discovery" (one per day).
+//
+// HONEST BEHAVIOUR: there is no image analysis. The text below is picked
+// at random from a short list, and the response says `simulated: true`.
+// The database function claim_daily_discovery enforces "once per day"
+// (with a lock, so parallel requests cannot cheat) and decides the luck
+// amount itself.
+import { requireUser } from '@/lib/server/auth';
+import { json, parseBody } from '@/lib/server/http';
+import { discoverySchema } from '@/lib/schemas';
+
+const SIMULATED_FEEDBACK = [
+  'A peaceful offline moment, perfect for restoring mental bandwidth.',
+  'Nutritious and vibrant. Excellent physical fuel for high focus.',
+  'Quality active recovery detected. Resting builds true resilience.',
+  'A serene setting carefully cultivated to clear the mind.',
+];
 
 export async function POST(request: Request) {
-  try {
-    const supabase = await createSupabaseServer();
-    
-    // Verify auth
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+  const auth = await requireUser();
+  if (auth.error) return auth.error;
 
-    const body = await request.json();
-    const { imageUrl } = body;
+  const body = await parseBody(request, discoverySchema);
+  if (body.error) return body.error;
 
-    if (!imageUrl) {
-      return NextResponse.json({ error: 'Missing image payload' }, { status: 400 });
-    }
+  const summary = SIMULATED_FEEDBACK[Math.floor(Math.random() * SIMULATED_FEEDBACK.length)];
 
-    // 1. Enforce strict Daily Rate Limiting
-    const startOfDay = new Date();
-    startOfDay.setUTCHours(0, 0, 0, 0);
+  const { data, error } = await auth.supabase.rpc('claim_daily_discovery', {
+    p_image_ref: body.data.imageRef,
+    p_summary: summary,
+  });
 
-    const { data: existingLogs, error: fetchError } = await supabase
-      .from('daily_discoveries')
-      .select('id')
-      .eq('user_id', user.id)
-      .gte('created_at', startOfDay.toISOString())
-      .limit(1);
-
-    if (fetchError) {
-      console.error('Error fetching discovery rate limits:', fetchError);
-      return NextResponse.json({ error: 'Database verification failed' }, { status: 500 });
-    }
-
-    if (existingLogs && existingLogs.length > 0) {
-      return NextResponse.json({ error: 'Daily Discovery limit reached' }, { status: 429 });
-    }
-
-    // 2. Simulated AI Vision Analysis
-    // We mock the AI latency to simulate the processing stage.
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    const mockFeedbacks = [
-      "A peaceful offline moment, perfect for restoring mental bandwidth.",
-      "Nutritious and vibrant. Excellent physical fuel for high focus.",
-      "Quality active recovery detected. Resting builds true resilience.",
-      "A serene setting carefully cultivated to clear the mind."
-    ];
-    const analysis_summary = mockFeedbacks[Math.floor(Math.random() * mockFeedbacks.length)];
-    const luck_granted = 10;
-
-    // 3. Database State Update
-    const { error: insertError } = await supabase
-      .from('daily_discoveries')
-      .insert({
-        user_id: user.id,
-        image_url: imageUrl,
-        analysis_summary,
-        luck_granted
-      });
-
-    if (insertError) {
-      console.error('Error logging discovery:', insertError);
-      return NextResponse.json({ error: 'Failed to log discovery' }, { status: 500 });
-    }
-
-    // 4. Secure RPC call to grant temporary luck safely
-    const { error: rpcError } = await supabase.rpc('grant_temporary_luck', {
-      p_user_id: user.id,
-      p_luck_amount: luck_granted
-    });
-
-    if (rpcError) {
-      console.error('Error granting luck:', rpcError);
-      return NextResponse.json({ error: 'Failed to boost luck' }, { status: 500 });
-    }
-
-    return NextResponse.json({
-      success: true,
-      data: { analysis_summary, luck_granted }
-    });
-
-  } catch (err) {
-    console.error('Discovery API Error:', err);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  if (error) {
+    console.error('claim_daily_discovery failed:', error.message);
+    return json({ error: 'Failed to log discovery' }, 500);
   }
+  if (data?.error === 'limit_reached') {
+    return json({ error: 'Daily Discovery limit reached' }, 429);
+  }
+
+  return json({
+    success: true,
+    simulated: true,
+    data: { analysis_summary: data.analysis_summary, luck_granted: data.luck_granted },
+  });
 }

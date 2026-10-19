@@ -46,27 +46,18 @@ function CreatePartyForm({ userId, onCreated, onCancel }: {
     if (!name.trim()) { setError('Party name is required.'); return; }
     setSaving(true);
 
-    const { error: err } = await supabase.from('parties').insert({
-      name: name.trim(),
-      description: desc.trim() || null,
-      emblem,
-      leader_id: userId,
-      max_members: max,
+    // One database call creates the party AND makes you its leader.
+    const { error: err } = await supabase.rpc('create_party', {
+      p_name: name.trim(),
+      p_description: desc.trim() || null,
+      p_emblem: emblem,
+      p_max_members: max,
     });
 
     if (err) {
       setError(err.message.includes('unique') ? 'That party name is taken.' : err.message);
       setSaving(false);
       return;
-    }
-
-    // Auto-join as leader
-    const { data: newParty } = await supabase
-      .from('parties').select('id').eq('name', name.trim()).single();
-    if (newParty) {
-      await supabase.from('party_members').insert({
-        party_id: newParty.id, user_id: userId, role: 'leader',
-      });
     }
     onCreated();
   };
@@ -168,24 +159,13 @@ export default function PartyPage() {
     if (!user) return;
     setUserId(user.id);
 
-    // Load all parties with member count + leader username
+    // party_directory is a view that already holds the member count and leader name
     const { data: partiesRaw } = await supabase
-      .from('parties')
-      .select(`
-        *,
-        party_members(count),
-        leader:profiles!parties_leader_id_fkey(username)
-      `)
+      .from('party_directory')
+      .select('*')
       .order('xp_pool', { ascending: false });
 
-    if (partiesRaw) {
-      const mapped = partiesRaw.map((p: any) => ({
-        ...p,
-        member_count:    p.party_members?.[0]?.count ?? 0,
-        leader_username: p.leader?.username ?? 'Unknown',
-      }));
-      setParties(mapped);
-    }
+    if (partiesRaw) setParties(partiesRaw as Party[]);
 
     // Load my party membership
     const { data: memberRow } = await supabase
@@ -208,11 +188,9 @@ export default function PartyPage() {
 
   const handleJoin = async (partyId: string) => {
     if (!userId) return;
-    const { error } = await supabase.from('party_members').insert({
-      party_id: partyId, user_id: userId, role: 'member',
-    });
+    const { error } = await supabase.rpc('join_party', { p_party_id: partyId });
     if (error) {
-      setJoinFeedback(error.message.includes('unique') ? 'Already a member.' : error.message);
+      setJoinFeedback(error.message);
     } else {
       setJoinFeedback('Joined! Welcome to the party.');
       await loadData();
@@ -222,8 +200,7 @@ export default function PartyPage() {
 
   const handleLeave = async () => {
     if (!userId || !myParty) return;
-    await supabase.from('party_members').delete()
-      .eq('user_id', userId).eq('party_id', myParty.id);
+    await supabase.rpc('leave_party');
     setMyParty(null);
     await loadData();
   };

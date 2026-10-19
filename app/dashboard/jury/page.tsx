@@ -2,6 +2,8 @@
 // app/dashboard/jury/page.tsx
 
 import React, { useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import { JURY_MIN_AURA } from '@/lib/rpg-engine';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '@/context/ThemeContext';
 import { useJuryQueue } from '@/hooks/useJuryQueue';
@@ -9,22 +11,24 @@ import JuryCard from '@/components/JuryCard';
 
 export default function JuryPage() {
   const { isClassic } = useTheme();
-  const { queue, loading, ourAura, removeFromQueue } = useJuryQueue();
+  const { queue, loading, ourAura, canJudge, removeFromQueue } = useJuryQueue();
   const [errorObj, setErrorObj] = useState<{id: string, msg: string} | null>(null);
 
   const handleVote = async (userQuestId: string, approve: boolean): Promise<boolean> => {
     try {
       setErrorObj(null);
-      const res = await fetch('/api/jury/vote', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userQuestId, vote: approve })
+      // One database call records the vote (weighted by YOUR Aura, read by the
+      // server) and decides the submission once enough votes are in.
+      const { error } = await supabase.rpc('cast_jury_vote', {
+        p_user_quest_id: userQuestId,
+        p_vote: approve,
       });
 
-      const data = await res.json();
-      
-      if (!res.ok) {
-        setErrorObj({ id: userQuestId, msg: data.error || 'Failed to submit vote' });
+      if (error) {
+        setErrorObj({
+          id: userQuestId,
+          msg: error.code === '23505' ? 'You have already voted on this submission' : error.message,
+        });
         return false;
       }
 
@@ -74,13 +78,13 @@ export default function JuryPage() {
         <AnimatePresence mode="popLayout">
           {queue.length > 0 ? (
             queue.map((item) => (
-              <div key={item.userQuest.id} className="card-wrapper">
+              <div key={item.userQuestId} className="card-wrapper">
                 <JuryCard 
                   item={item} 
                   ourAura={ourAura} 
                   onVote={handleVote} 
                 />
-                {errorObj?.id === item.userQuest.id && (
+                {errorObj?.id === item.userQuestId && (
                   <p className="error-text">⚠ {errorObj.msg}</p>
                 )}
               </div>
@@ -93,8 +97,14 @@ export default function JuryPage() {
               exit={{ opacity: 0 }}
             >
               <div className="text-4xl mb-2 opacity-80">🕊</div>
-              <h3 className="text-slate-200 font-bold text-xl m-0">The queue is empty</h3>
-              <p className="text-sm m-0 max-w-sm">There are no pending submissions awaiting your review at this time. Go grind some quests!</p>
+              <h3 className="text-slate-200 font-bold text-xl m-0">
+                {canJudge ? 'The queue is empty' : 'Not enough Aura to judge yet'}
+              </h3>
+              <p className="text-sm m-0 max-w-sm">
+                {canJudge
+                  ? 'There are no pending submissions awaiting your review at this time. Go grind some quests!'
+                  : `You need at least ${JURY_MIN_AURA} Aura to judge other players. You have ${ourAura}. Complete quests to earn more.`}
+              </p>
             </motion.div>
           )}
         </AnimatePresence>

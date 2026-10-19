@@ -58,8 +58,7 @@ export default function JournalPage() {
     setLastResult(null);
 
     const { data, error } = await supabase.rpc('submit_daily_log', {
-      p_user_id: userId,
-      p_entry:   draft.trim(),
+      p_entry: draft.trim(),
     });
 
     if (!error && data) {
