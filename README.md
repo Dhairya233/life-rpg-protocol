@@ -341,7 +341,7 @@ No licence has been chosen yet, so by default **all rights are reserved**. Add a
 
 <div align="center">
 
-**Built by [YOUR NAME](https://github.com/YOUR-USERNAME)**
+**Built by [Dhairya](https://github.com/Dhairya233)**
 
 *"Every minute of genuine focus is a step toward becoming legendary."*
 
