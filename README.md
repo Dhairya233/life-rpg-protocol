@@ -8,6 +8,7 @@
 ![Tailwind](https://img.shields.io/badge/Tailwind-CSS-9b59ff?style=flat-square)
 ![DB tests](https://img.shields.io/badge/DB%20security%20tests-260%20passing-39ff6b?style=flat-square)
 ![Status](https://img.shields.io/badge/status-portfolio%20project-4af7ff?style=flat-square)
+![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
 
 <!-- Add 2–3 screenshots or a short GIF here (dashboard, focus session, jury screen).
      Save them in docs/images/ and use: ![Dashboard](docs/images/dashboard.png) -->
@@ -17,8 +18,6 @@
 ## 🎥 Demo Video
 
 https://github.com/user-attachments/assets/0b5e3e85-28cd-4ee0-9e37-b81182f566dd
-
-![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
 
 ## 📖 What is Life-RPG Protocol?
 
