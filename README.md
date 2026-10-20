@@ -146,8 +146,8 @@ Full details and the **honest limits**: [`docs/SECURITY.md`](docs/SECURITY.md) Â
 **fresh** Supabase project, not one that holds data you care about.
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/YOUR-REPO.git
-cd YOUR-REPO
+git clone https://github.com/Dhairya233/life-rpg-protocol.git
+cd life-rpg-protocol
 npm install
 cp .env.example .env.local
 ```
