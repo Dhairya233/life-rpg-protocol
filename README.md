@@ -14,6 +14,10 @@
 
 ---
 
+## 🎥 Demo Video
+
+https://github.com/user-attachments/assets/0b5e3e85-28cd-4ee0-9e37-b81182f566dd
+
 ## 📖 What is Life-RPG Protocol?
 
 Life-RPG Protocol is a **gamified productivity app** where real-world focus sessions and finished work are converted
