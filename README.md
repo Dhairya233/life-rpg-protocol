@@ -18,6 +18,8 @@
 
 https://github.com/user-attachments/assets/0b5e3e85-28cd-4ee0-9e37-b81182f566dd
 
+![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
+
 ## 📖 What is Life-RPG Protocol?
 
 Life-RPG Protocol is a **gamified productivity app** where real-world focus sessions and finished work are converted
@@ -335,7 +337,7 @@ More: [`docs/SECURITY.md`](docs/SECURITY.md) · [`docs/DECISIONS.md`](docs/DECIS
 
 ## 📝 License
 
-No licence has been chosen yet, so by default **all rights are reserved**. Add a `LICENSE` file (for example MIT) if you want others to reuse the code.
+Released under the [MIT License](LICENSE).
 
 ---
 
